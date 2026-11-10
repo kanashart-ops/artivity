@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
@@ -128,6 +128,16 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
           minimumDays
         );
       }
+    }
+
+    if (currentVersion < 4) {
+      // Поля объясняют адаптивный расчёт, старые события остаются неизменными.
+      await db.execAsync(`
+        ALTER TABLE consumption_events ADD COLUMN training_bonus_days INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE consumption_events ADD COLUMN light_bonus_days INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE consumption_events ADD COLUMN alcohol_extra_days INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE consumption_events ADD COLUMN early_penalty_days INTEGER NOT NULL DEFAULT 0;
+      `);
     }
 
     await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION};`);

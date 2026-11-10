@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { upsertConsumptionEvent } from './intervals';
 
 const ALCOHOL_FREE_START_KEY = 'alcohol_free_start_date';
 
@@ -38,12 +39,6 @@ type SettingRow = { value: string };
 type CountRow = { total: number };
 type WorkoutNameRow = { name: string };
 type IdRow = { item_id: number };
-type LastEventRow = { consumed_at: string; interval_days: number };
-type ItemRow = {
-  id: number;
-  base_interval_days: number;
-};
-
 // Сохраняем местную дату телефона, не UTC.
 export function localDateKey(date: Date = new Date()): string {
   const year = date.getFullYear();
@@ -220,39 +215,10 @@ export async function saveDayReport(
       }
     }
 
+    // Пересчитываем ТОЛЬКО события текущего дня при редактировании анкеты.
+    // Ранее сохранённые даты и уже начатые таймеры не меняются.
     for (const id of newIds) {
-      if (oldIds.has(id)) continue;
-
-      const item = await txn.getFirstAsync<ItemRow>(
-        `SELECT id, base_interval_days FROM restricted_items WHERE id = ?`,
-        id
-      );
-      if (!item) throw new Error('Один из продуктов не найден');
-
-      const previous = await txn.getFirstAsync<LastEventRow>(
-        `SELECT consumed_at, interval_days
-         FROM consumption_events
-         WHERE item_id = ? AND consumed_at < ?
-         ORDER BY consumed_at DESC, id DESC LIMIT 1`,
-        id,
-        `${date}T12:00:00`
-      );
-      const early = previous
-        ? daysBetween(previous.consumed_at.slice(0, 10), date) < previous.interval_days
-        : false;
-
-      // Пока сохраняем базовый интервал. Адаптивную формулу подключим
-      // на этапе «Интервалы», используя эти фактические данные.
-      await txn.runAsync(
-        `INSERT INTO consumption_events
-         (item_id, consumed_at, interval_days, was_early, source_date)
-         VALUES (?, ?, ?, ?, ?)`,
-        id,
-        `${date}T12:00:00`,
-        item.base_interval_days,
-        early ? 1 : 0,
-        date
-      );
+      await upsertConsumptionEvent(txn, id, date);
     }
   });
 }
