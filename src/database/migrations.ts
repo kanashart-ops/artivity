@@ -1,33 +1,23 @@
-
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
-export async function initializeDatabase(
-  db: SQLiteDatabase
-): Promise<void> {
+export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
   `);
 
-  const row = await db.getFirstAsync<{
-    user_version: number;
-  }>('PRAGMA user_version');
-
-  if (!row) {
-    throw new Error('Не удалось определить версию базы данных');
-  }
+  const row = await db.getFirstAsync<{ user_version: number }>(
+    'PRAGMA user_version'
+  );
+  if (!row) throw new Error('Не удалось определить версию базы данных');
 
   const currentVersion = row.user_version;
-
   if (currentVersion > DATABASE_VERSION) {
     throw new Error('Версия базы данных новее версии приложения');
   }
-
-  if (currentVersion === DATABASE_VERSION) {
-    return;
-  }
+  if (currentVersion === DATABASE_VERSION) return;
 
   await db.withTransactionAsync(async () => {
     if (currentVersion < 1) {
@@ -56,10 +46,7 @@ export async function initializeDatabase(
           workout_id INTEGER NOT NULL,
           performed_on TEXT NOT NULL,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-          FOREIGN KEY (workout_id)
-            REFERENCES workout_names(id)
-            ON DELETE CASCADE
+          FOREIGN KEY (workout_id) REFERENCES workout_names(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS workout_sets (
@@ -68,10 +55,7 @@ export async function initializeDatabase(
           set_index INTEGER NOT NULL,
           weight_kg REAL,
           reps INTEGER,
-
-          FOREIGN KEY (entry_id)
-            REFERENCES workout_entries(id)
-            ON DELETE CASCADE
+          FOREIGN KEY (entry_id) REFERENCES workout_entries(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS restricted_items (
@@ -89,22 +73,24 @@ export async function initializeDatabase(
           consumed_at TEXT NOT NULL,
           interval_days INTEGER NOT NULL,
           was_early INTEGER NOT NULL DEFAULT 0,
-
-          FOREIGN KEY (item_id)
-            REFERENCES restricted_items(id)
-            ON DELETE CASCADE
+          FOREIGN KEY (item_id) REFERENCES restricted_items(id) ON DELETE CASCADE
         );
 
         CREATE INDEX IF NOT EXISTS idx_workout_date
           ON workout_entries(performed_on);
-
         CREATE INDEX IF NOT EXISTS idx_consumption_item
           ON consumption_events(item_id, consumed_at);
       `);
     }
 
-    await db.execAsync(
-      'PRAGMA user_version = 1;'
-    );
+    if (currentVersion < 2) {
+      // Существующие тренировки сохраняются. Их тип по умолчанию — силовая.
+      await db.execAsync(`
+        ALTER TABLE workout_names
+        ADD COLUMN category TEXT NOT NULL DEFAULT 'strength';
+      `);
+    }
+
+    await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION};`);
   });
 }
