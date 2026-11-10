@@ -145,3 +145,99 @@ export function formatDate(date: string): string {
   const [year, month, day] = date.split('-');
   return `${day}.${month}.${year}`;
 }
+
+// Изменение названия и типа не затрагивает сохранённую историю.
+export async function updateWorkout(
+  db: SQLiteDatabase,
+  workoutId: number,
+  name: string,
+  category: WorkoutCategory
+): Promise<void> {
+  const cleanName = name.trim().replace(/\s+/g, ' ');
+  if (!cleanName) throw new Error('Введи название тренировки');
+  if (cleanName.length > 80) throw new Error('Слишком длинное название');
+  if (!['strength', 'cardio', 'home'].includes(category)) {
+    throw new Error('Выбери тип тренировки');
+  }
+
+  const duplicate = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM workout_names WHERE name = ? COLLATE NOCASE AND id <> ?',
+    cleanName,
+    workoutId
+  );
+  if (duplicate) throw new Error('Такая тренировка уже есть');
+
+  await db.runAsync(
+    'UPDATE workout_names SET name = ?, category = ? WHERE id = ?',
+    cleanName,
+    category,
+    workoutId
+  );
+}
+
+// Удаление всего упражнения: внешние ключи удалят его записи и подходы.
+export async function deleteWorkout(
+  db: SQLiteDatabase,
+  workoutId: number
+): Promise<void> {
+  await db.runAsync('DELETE FROM workout_names WHERE id = ?', workoutId);
+}
+
+function assertValidSession(date: string, sets: WorkoutSet[]): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error('Некорректная дата');
+  }
+  const [y, m, d] = date.split('-').map(Number);
+  const check = new Date(y, m - 1, d);
+  if (check.getFullYear() !== y || check.getMonth() !== m - 1 || check.getDate() !== d) {
+    throw new Error('Такой даты не существует');
+  }
+  if (!sets.length) throw new Error('Добавь хотя бы один подход');
+  for (const set of sets) {
+    if (set.weight_kg !== null && (!Number.isFinite(set.weight_kg) || set.weight_kg < 0)) {
+      throw new Error('Некорректный вес');
+    }
+    if (set.reps !== null && (!Number.isInteger(set.reps) || set.reps < 0)) {
+      throw new Error('Некорректное число повторений');
+    }
+  }
+}
+
+// Правка существующего занятия, а не создание дубликата.
+export async function updateSession(
+  db: SQLiteDatabase,
+  sessionId: number,
+  date: string,
+  sets: WorkoutSet[]
+): Promise<void> {
+  assertValidSession(date, sets);
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    const result = await tx.runAsync(
+      'UPDATE workout_entries SET performed_on = ? WHERE id = ?',
+      date,
+      sessionId
+    );
+    if (result.changes === 0) throw new Error('Запись тренировки не найдена');
+    await tx.runAsync('DELETE FROM workout_sets WHERE entry_id = ?', sessionId);
+    for (let i = 0; i < sets.length; i++) {
+      await tx.runAsync(
+        `INSERT INTO workout_sets (entry_id, set_index, weight_kg, reps)
+         VALUES (?, ?, ?, ?)`,
+        sessionId,
+        i + 1,
+        sets[i].weight_kg,
+        sets[i].reps
+      );
+    }
+  });
+}
+
+export async function deleteSession(
+  db: SQLiteDatabase,
+  sessionId: number
+): Promise<void> {
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await tx.runAsync('DELETE FROM workout_sets WHERE entry_id = ?', sessionId);
+    await tx.runAsync('DELETE FROM workout_entries WHERE id = ?', sessionId);
+  });
+}

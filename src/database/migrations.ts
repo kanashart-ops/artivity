@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
@@ -84,11 +84,50 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
     }
 
     if (currentVersion < 2) {
-      // Существующие тренировки сохраняются. Их тип по умолчанию — силовая.
+      // Существующие тренировки сохраняются, тип по умолчанию — силовая.
       await db.execAsync(`
         ALTER TABLE workout_names
         ADD COLUMN category TEXT NOT NULL DEFAULT 'strength';
       `);
+    }
+
+    if (currentVersion < 3) {
+      // Новые поля дополняют существующие таблицы, не очищая их.
+      await db.execAsync(`
+        ALTER TABLE daily_entries
+        ADD COLUMN trained INTEGER NOT NULL DEFAULT 0;
+
+        ALTER TABLE consumption_events
+        ADD COLUMN source_date TEXT;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_consumption_report_unique
+        ON consumption_events(item_id, source_date)
+        WHERE source_date IS NOT NULL;
+      `);
+
+      // Стартовый список ограничений. Параметры предварительные.
+      const starterItems: Array<[string, number, number, number]> = [
+        ["McDonald's", 1, 40, 30],
+        ['Пицца', 1, 30, 21],
+        ['Большой фастфуд', 1, 30, 21],
+        ['Шаурма', 2, 7, 5],
+        ['Бургер', 2, 12, 7],
+        ['Выпечка и десерты', 2, 7, 3],
+        ['Небольшой десерт или снек', 3, 2, 1],
+      ];
+
+      for (const [name, tier, baseDays, minimumDays] of starterItems) {
+        await db.runAsync(
+          `INSERT INTO restricted_items
+           (name, tier, base_interval_days, minimum_interval_days)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(name) DO NOTHING`,
+          name,
+          tier,
+          baseDays,
+          minimumDays
+        );
+      }
     }
 
     await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION};`);
