@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import SwipeTabScreen from '@/components/swipe-tab-screen';
+import ModernTodayBody from '@/components/modern-today-body';
 import {
   loadRestrictedItems,
   loadToday,
@@ -108,7 +109,7 @@ export default function TodayScreen() {
   const [ateRestricted, setAteRestricted] = useState(false);
   const [error, setError] = useState('');
 
-  const background = dark ? '#101720' : '#F7F9FB';
+  const background = dark ? '#0E1720' : '#F3F8FA';
   const card = dark ? '#1C2733' : '#FFFFFF';
   const textColor = dark ? '#F4F7FA' : '#17212D';
   const muted = dark ? '#A8B5C3' : '#748293';
@@ -210,102 +211,7 @@ export default function TodayScreen() {
         <SafeAreaView style={[styles.root, { backgroundColor: background }]} edges={['top', 'left', 'right']}>
           <StatusBar style={dark ? 'light' : 'dark'} />
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.brand}>ARTIVITY</Text>
-            <Text style={[styles.heading, { color: textColor }]}>Сегодня</Text>
-            <Text style={[styles.date, { color: muted }]}>{formatDate(localDateKey())}</Text>
-
-            {loading ? (
-              <ActivityIndicator color="#22A788" style={styles.loading} />
-            ) : today ? (
-              <>
-                <View style={styles.statRow}>
-                  <View style={[styles.statCard, { backgroundColor: card, borderColor: border }]}>
-                    <Ionicons name="flame-outline" size={23} color="#E89B3A" />
-                    <Text style={[styles.statNumber, { color: textColor }]}>{today.currentStreak}</Text>
-                    <Text style={[styles.statLabel, { color: muted }]}>Streak · дней</Text>
-                  </View>
-                  <View style={[styles.statCard, { backgroundColor: card, borderColor: border }]}>
-                    <Ionicons name="trophy-outline" size={23} color="#22A788" />
-                    <Text style={[styles.statNumber, { color: textColor }]}>{today.bestStreak}</Text>
-                    <Text style={[styles.statLabel, { color: muted }]}>Лучший результат</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.card, { backgroundColor: card, borderColor: border }]}>
-                  <View style={styles.titleRow}>
-                    <Ionicons
-                      name={today.checkedIn ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                      color="#22A788"
-                      size={23}
-                    />
-                    <Text style={[styles.cardTitle, { color: textColor }]}>Отметка дня</Text>
-                  </View>
-                  <Text style={[styles.helper, { color: muted }]}>
-                    {today.checkedIn
-                      ? 'Сегодняшний день засчитан. Можно исправить ответы, Streak останется.'
-                      : 'Ответь на четыре коротких вопроса, чтобы засчитать день.'}
-                  </Text>
-                  <Pressable onPress={openForm} style={styles.mainButton}>
-                    <Ionicons name={today.checkedIn ? 'create-outline' : 'checkmark'} size={19} color="#FFFFFF" />
-                    <Text style={styles.mainButtonText}>
-                      {today.checkedIn ? 'Редактировать день' : 'Отметить день'}
-                    </Text>
-                  </Pressable>
-                  {today.checkedIn ? (
-                    <View style={styles.summary}>
-                      <Text style={[styles.summaryText, { color: muted }]}>
-                        Тренировка: {today.answers.trained ? 'да' : 'нет'}
-                      </Text>
-                      <Text style={[styles.summaryText, { color: muted }]}>
-                        Ограниченная еда: {foodNames.length ? foodNames.join(', ') : 'нет'}
-                      </Text>
-                      <Text style={[styles.summaryText, { color: muted }]}>
-                        Разгрузочный день: {today.answers.lightDay ? 'да' : 'нет'}
-                      </Text>
-                      <Text style={[styles.summaryText, { color: muted }]}>
-                        Алкоголь: {today.answers.alcohol ? 'да' : 'нет'}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={[styles.card, { backgroundColor: card, borderColor: border }]}>
-                  <View style={styles.titleRow}>
-                    <Ionicons name="calendar-number-outline" color="#22A788" size={22} />
-                    <Text style={[styles.cardTitle, { color: textColor }]}>Без алкоголя</Text>
-                  </View>
-                  <View style={styles.countRow}>
-                    <Text style={[styles.bigNumber, { color: textColor }]}>{today.alcoholFreeDays}</Text>
-                    <Text style={[styles.numberLabel, { color: muted }]}>
-                      {pluralDays(today.alcoholFreeDays)}
-                    </Text>
-                  </View>
-                  <Text style={[styles.helper, { color: muted }]}>
-                    Отсчёт с {formatDate(today.alcoholFreeSince)}. Отметка алкоголя находится в анкете дня.
-                  </Text>
-                </View>
-
-                <View style={[styles.card, { backgroundColor: card, borderColor: border }]}>
-                  <View style={styles.titleRow}>
-                    <Ionicons name="barbell-outline" color="#22A788" size={22} />
-                    <Text style={[styles.cardTitle, { color: textColor }]}>Тренировки сегодня</Text>
-                  </View>
-                  <Text style={[styles.workoutCount, { color: textColor }]}>
-                    {today.workoutEntries} {today.workoutEntries === 1 ? 'запись' : 'записей'}
-                  </Text>
-                  <Text style={[styles.helper, { color: muted }]} numberOfLines={2}>
-                    {today.workoutNames.length
-                      ? today.workoutNames.join(' · ')
-                      : 'В журнале сегодня ещё нет занятий.'}
-                  </Text>
-                  <Pressable onPress={() => router.navigate('/workouts')} style={styles.linkRow}>
-                    <Text style={styles.linkText}>Открыть журнал</Text>
-                    <Ionicons name="arrow-forward" color="#22A788" size={18} />
-                  </Pressable>
-                </View>
-              </>
-            ) : null}
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <ModernTodayBody today={today} loading={loading} error={error} onOpenForm={openForm} />
           </ScrollView>
         </SafeAreaView>
       </SwipeTabScreen>

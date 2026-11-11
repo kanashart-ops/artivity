@@ -34,10 +34,10 @@ export default function WorkoutsScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
   const dark = useColorScheme() === 'dark';
-  const background = dark ? '#101720' : '#F7F9FB';
+  const background = dark ? '#0E1720' : '#F3F8FA';
   const foreground = dark ? '#FFFFFF' : '#17212D';
   const muted = dark ? '#A0ACBA' : '#738294';
-  const card = dark ? '#1B2633' : '#FFFFFF';
+  const card = dark ? '#1A2935' : '#FFFFFF';
 
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +109,7 @@ export default function WorkoutsScreen() {
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => router.push({ pathname: '/workout/[id]', params: { id: String(item.id) } })}
-                style={[styles.item, { backgroundColor: card }]}
+                style={[styles.item, { backgroundColor: card, borderColor: dark ? '#2F4250' : '#E5EDF2' }]}
               >
                 <View style={styles.itemIcon}>
                   <Ionicons name={item.category === 'cardio' ? 'heart-outline' : item.category === 'home' ? 'body-outline' : 'barbell-outline'} size={23} color="#22A788" />
@@ -170,13 +170,13 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   brand: { fontSize: 12, fontWeight: '800', letterSpacing: 3, color: '#22A788', marginBottom: 10 },
   title: { fontSize: 30, fontWeight: '800' },
-  plus: { height: 49, width: 49, borderRadius: 15, backgroundColor: '#22A788', alignItems: 'center', justifyContent: 'center' },
+  plus: { height: 49, width: 49, borderRadius: 15, backgroundColor: '#12C873', alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingHorizontal: 18, paddingBottom: 24, flexGrow: 1 },
   loading: { marginTop: 50 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 70 },
   emptyTitle: { fontSize: 20, fontWeight: '700', marginTop: 20 },
   emptyHint: { fontSize: 14, marginTop: 8, textAlign: 'center' },
-  item: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 14, marginBottom: 10 },
+  item: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, padding: 16, marginBottom: 11, borderWidth: 1, elevation: 2, shadowColor: '#1A5462', shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   itemIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#22A7881F', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   itemText: { flex: 1 },
   itemTitle: { fontSize: 16, fontWeight: '700' },
@@ -193,6 +193,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 18 },
   cancel: { padding: 11 },
   cancelText: { fontSize: 15, fontWeight: '600' },
-  save: { borderRadius: 12, backgroundColor: '#22A788', paddingHorizontal: 23, paddingVertical: 13 },
+  save: { borderRadius: 12, backgroundColor: '#12C873', paddingHorizontal: 23, paddingVertical: 13 },
   saveText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 });

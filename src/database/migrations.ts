@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
@@ -137,6 +137,18 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
         ALTER TABLE consumption_events ADD COLUMN light_bonus_days INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE consumption_events ADD COLUMN alcohol_extra_days INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE consumption_events ADD COLUMN early_penalty_days INTEGER NOT NULL DEFAULT 0;
+      `);
+    }
+
+    if (currentVersion < 5) {
+      // Отдельный журнал веса. Все прежние таблицы остаются без изменений.
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS weight_entries (
+          date TEXT PRIMARY KEY NOT NULL,
+          weight_kg REAL NOT NULL CHECK(weight_kg > 0 AND weight_kg <= 500),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
       `);
     }
 
