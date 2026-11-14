@@ -16,7 +16,7 @@ function mix(from: number[], to: number[], amount: number): string {
   return `rgb(${n[0]}, ${n[1]}, ${n[2]})`;
 }
 
-// Только завершённые дни считаются пройденными. Красный -> оранжевый -> зелёный.
+// The ring stays complete; only its color changes from red to green.
 export function ringColor(progress: number): string {
   const p = Math.max(0, Math.min(1, progress));
   if (p < 0.5) return mix([239, 80, 83], [245, 165, 53], p * 2);
@@ -36,27 +36,16 @@ export function FoodProgressRing({ item, size = 112, dark = false, compact = fal
   const last = item.history[0];
   const completed = Boolean(last) && item.remainingDays === 0;
   const progress = intervalProgress(item);
-  // На нулевом дне показываем маленький красный сектор, а не пустой круг.
-  const visibleProgress = last ? Math.max(0.035, progress) : 0;
   const stroke = size >= 108 ? 10 : 8;
   const radius = (size - stroke - 4) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const color = last ? ringColor(progress) : (dark ? '#64748B' : '#B7C8D3');
-  const track = dark ? '#334155' : '#E6EDF2';
+  const color = ringColor(last ? progress : 0);
   const foreground = dark ? '#F8FAFC' : '#152436';
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Circle cx={size / 2} cy={size / 2} r={radius} fill="none"
-          stroke={track} strokeWidth={stroke} />
-        {last ? (
-          <Circle cx={size / 2} cy={size / 2} r={radius} fill="none"
-            stroke={color} strokeWidth={stroke} strokeLinecap="round"
-            strokeDasharray={`${circumference} ${circumference}`}
-            strokeDashoffset={circumference * (1 - visibleProgress)}
-            rotation={-90} origin={`${size / 2}, ${size / 2}`} />
-        ) : null}
+          stroke={color} strokeWidth={stroke} />
       </Svg>
       <View style={styles.content}>
         <Text style={[styles.value, { color: completed ? '#16B869' : foreground, fontSize: compact ? (completed ? 12 : 17) : 21 }]}>

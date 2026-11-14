@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { getPoolConsistency, type PoolConsistency } from './pool';
 
 export type Tier = 1 | 2 | 3;
 
@@ -13,6 +14,8 @@ export type IntervalEvent = {
   light_bonus_days: number;
   alcohol_extra_days: number;
   early_penalty_days: number;
+  pool_bonus_days: number;
+  inactivity_extra_days: number;
 };
 
 type ItemRow = {
@@ -21,6 +24,7 @@ type ItemRow = {
   tier: number;
   base_interval_days: number;
   minimum_interval_days: number;
+  activity_impact_days: number | null;
 };
 
 export type IntervalCard = ItemRow & {
@@ -41,6 +45,7 @@ export type TrainingConsistency = {
 export type IntervalSnapshot = {
   items: IntervalCard[];
   training: TrainingConsistency;
+  pool: PoolConsistency;
 };
 
 function dateOrdinal(key: string): number {
@@ -105,6 +110,41 @@ export function levelDescription(level: number): string {
 
 type CountRow = { total: number };
 
+/** Custom food timers use a chosen maximum sensitivity of 0–14 days.
+ *  The initial interval is not recalculated later; only NEW consumption events
+ *  reflect the user's activity at the time of the event.
+ */
+export async function addCustomInterval(
+  db: SQLiteDatabase,
+  nameInput: string,
+  baseDays: number,
+  activityImpactDays: number
+): Promise<void> {
+  const name = nameInput.trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 60) {
+    throw new Error('Название должно содержать от 2 до 60 символов');
+  }
+  if (!Number.isInteger(baseDays) || baseDays < 1 || baseDays > 365) {
+    throw new Error('Интервал должен быть целым числом от 1 до 365 дней');
+  }
+  if (!Number.isInteger(activityImpactDays) || activityImpactDays < 0 ||
+      activityImpactDays > Math.min(14, baseDays - 1)) {
+    throw new Error(`Влияние активности — от 0 до ${Math.min(14, baseDays - 1)} дней`);
+  }
+  const existing = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM restricted_items WHERE name = ? COLLATE NOCASE', name
+  );
+  if (existing) throw new Error('Такой продукт уже существует');
+
+  await db.runAsync(
+    `INSERT INTO restricted_items
+       (name, tier, base_interval_days, minimum_interval_days, activity_impact_days)
+     VALUES (?, 2, ?, ?, ?)`,
+    name, baseDays, Math.max(1, baseDays - activityImpactDays), activityImpactDays
+  );
+}
+
+
 // Предварительные параметры v0.8. Заметно уже на 2 тренировочных днях
 // за неделю, но максимальный бонус появляется только при регулярности.
 async function calculateNewInterval(
@@ -112,13 +152,35 @@ async function calculateNewInterval(
   item: ItemRow,
   date: string
 ) {
-  const training = await getTrainingConsistency(db, date);
+  const [training, pool] = await Promise.all([
+    getTrainingConsistency(db, date), getPoolConsistency(db, date),
+  ]);
   const maxBonuses = [0, 1, 2, 3, 4];
-  const trainingBonus = Math.min(
-    Math.max(0, item.base_interval_days - item.minimum_interval_days),
-    maxBonuses[training.level] ?? 0,
-    item.tier === 3 ? 1 : 4
-  );
+  const maxReduction = Math.max(0, item.base_interval_days - item.minimum_interval_days);
+  let trainingBonus = 0;
+  let poolBonus = 0;
+  let inactivityExtra = 0;
+
+  if (item.activity_impact_days !== null) {
+    const impact = item.activity_impact_days;
+    // No regular training/swimming adds the chosen maximum extra days.
+    // Swimming starts to count only at 2 visits in the last 7 days.
+    if (training.level === 0 && pool.bonusDays === 0) {
+      inactivityExtra = impact;
+    } else {
+      trainingBonus = Math.min(maxReduction, Math.round(impact * training.level / 4));
+      const poolPotential = pool.bonusDays === 2 ? Math.ceil(impact / 2) : pool.bonusDays === 1 ? Math.max(1, Math.round(impact / 4)) : 0;
+      poolBonus = Math.min(poolPotential, Math.max(0, impact - trainingBonus),
+        Math.max(0, maxReduction - trainingBonus));
+    }
+  } else {
+    // Pre-installed foods retain their original tier rules; the pool is an
+    // independent, modest extra bonus only for systematic attendance.
+    trainingBonus = Math.min(maxReduction, maxBonuses[training.level] ?? 0,
+      item.tier === 3 ? 1 : 4);
+    poolBonus = Math.min(pool.bonusDays, Math.max(0, maxReduction - trainingBonus),
+      item.tier === 3 ? 1 : 2);
+  }
 
   const lightCount = await db.getFirstAsync<CountRow>(
     `SELECT COUNT(*) AS total FROM daily_entries
@@ -156,12 +218,15 @@ async function calculateNewInterval(
 
   const intervalDays = Math.max(
     item.minimum_interval_days,
-    item.base_interval_days - trainingBonus - lightBonus + alcoholExtra + earlyPenalty
+    item.base_interval_days - trainingBonus - poolBonus - lightBonus
+      + inactivityExtra + alcoholExtra + earlyPenalty
   );
   return {
     intervalDays,
     wasEarly: wasEarly ? 1 : 0,
     trainingBonus,
+    poolBonus,
+    inactivityExtra,
     lightBonus,
     alcoholExtra,
     earlyPenalty,
@@ -176,7 +241,7 @@ export async function upsertConsumptionEvent(
   date: string
 ): Promise<void> {
   const item = await db.getFirstAsync<ItemRow>(
-    `SELECT id, name, tier, base_interval_days, minimum_interval_days
+    `SELECT id, name, tier, base_interval_days, minimum_interval_days, activity_impact_days
      FROM restricted_items WHERE id = ?`,
     itemId
   );
@@ -186,8 +251,9 @@ export async function upsertConsumptionEvent(
   await db.runAsync(
     `INSERT INTO consumption_events
       (item_id, consumed_at, source_date, interval_days, was_early,
-       training_bonus_days, light_bonus_days, alcohol_extra_days, early_penalty_days)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       training_bonus_days, light_bonus_days, alcohol_extra_days, early_penalty_days,
+       pool_bonus_days, inactivity_extra_days)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(item_id, source_date) WHERE source_date IS NOT NULL
      DO UPDATE SET
        interval_days = excluded.interval_days,
@@ -195,11 +261,14 @@ export async function upsertConsumptionEvent(
        training_bonus_days = excluded.training_bonus_days,
        light_bonus_days = excluded.light_bonus_days,
        alcohol_extra_days = excluded.alcohol_extra_days,
-       early_penalty_days = excluded.early_penalty_days`,
+       early_penalty_days = excluded.early_penalty_days,
+       pool_bonus_days = excluded.pool_bonus_days,
+       inactivity_extra_days = excluded.inactivity_extra_days`,
     itemId,
     `${date}T12:00:00`, date,
     result.intervalDays, result.wasEarly, result.trainingBonus,
-    result.lightBonus, result.alcoholExtra, result.earlyPenalty
+    result.lightBonus, result.alcoholExtra, result.earlyPenalty,
+    result.poolBonus, result.inactivityExtra
   );
 }
 
@@ -222,19 +291,21 @@ export async function loadIntervalSnapshot(
   db: SQLiteDatabase,
   today = localToday()
 ): Promise<IntervalSnapshot> {
-  const [rows, training] = await Promise.all([
+  const [rows, training, pool] = await Promise.all([
     db.getAllAsync<ItemRow>(
-      `SELECT id, name, tier, base_interval_days, minimum_interval_days
+      `SELECT id, name, tier, base_interval_days, minimum_interval_days, activity_impact_days
        FROM restricted_items ORDER BY tier, id`
     ),
     getTrainingConsistency(db, today),
+    getPoolConsistency(db, today),
   ]);
   const items: IntervalCard[] = [];
   for (const row of rows) {
     const history = await db.getAllAsync<IntervalEvent>(
       `SELECT id, item_id, consumed_at, source_date, interval_days, was_early,
               training_bonus_days, light_bonus_days,
-              alcohol_extra_days, early_penalty_days
+              alcohol_extra_days, early_penalty_days,
+              pool_bonus_days, inactivity_extra_days
        FROM consumption_events WHERE item_id = ?
        ORDER BY consumed_at DESC, id DESC LIMIT 15`,
       row.id
@@ -252,5 +323,5 @@ export async function loadIntervalSnapshot(
       recordedToday: history.some((event) => event.source_date === today),
     });
   }
-  return { items, training };
+  return { items, training, pool };
 }

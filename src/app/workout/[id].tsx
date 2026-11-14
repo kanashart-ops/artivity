@@ -14,8 +14,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
+  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -35,6 +35,7 @@ import {
   type WorkoutSession,
   type WorkoutSet,
 } from '@/database/workouts';
+import { formatTonnage, sessionTonnage } from '@/database/tonnage';
 
 type SetDraft = { weight: string; reps: string };
 const CATEGORIES: WorkoutCategory[] = ['strength', 'cardio', 'home'];
@@ -111,6 +112,8 @@ export default function WorkoutDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editModal, setEditModal] = useState(false);
+  const [historyMenu, setHistoryMenu] = useState<WorkoutSession | null>(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
   const [nameInput, setNameInput] = useState('');
   const [categoryInput, setCategoryInput] = useState<WorkoutCategory>('strength');
 
@@ -287,6 +290,13 @@ export default function WorkoutDetailScreen() {
           <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
             <Text style={[styles.workoutName, { color: foreground }]}>{workout.name}</Text>
             <Text style={[styles.category, { color: muted }]}>{CATEGORY_LABELS[workout.category]}</Text>
+            <View style={[styles.tonnageCard, { backgroundColor: dark ? '#20392F' : '#E8F8EE' }]}>
+              <Ionicons name="barbell-outline" size={23} color={PRIMARY} />
+              <View>
+                <Text style={[styles.tonnageValue, { color: foreground }]}>{formatTonnage(workout.tonnage_kg)}</Text>
+                <Text style={[styles.tonnageNote, { color: muted }]}>Тоннаж упражнения за всё время</Text>
+              </View>
+            </View>
 
             <View style={[styles.card, { backgroundColor: card }]}>
               <Text style={[styles.sectionTitle, { color: foreground }]}>
@@ -313,7 +323,7 @@ export default function WorkoutDetailScreen() {
                 style={[styles.dateInput, { color: foreground, borderColor: inputBorder }]}
               />
               <Text style={[styles.hint, { color: muted }]}>
-                Для каждого подхода введи вес и/или количество повторений.
+                Укажи вес и/или повторы. Для двух гантелей введи их суммарный вес.
               </Text>
               <View style={styles.tableHead}>
                 <Text style={[styles.numColumn, { color: muted }]}>№</Text>
@@ -373,34 +383,58 @@ export default function WorkoutDetailScreen() {
 
             <Text style={[styles.historyTitle, { color: foreground }]}>История ({history.length})</Text>
             {history.length === 0 ? (
-              <Text style={[styles.hint, { color: muted, marginBottom: 32 }]}>Записи появятся здесь после первой тренировки.</Text>
+              <Text style={[styles.hint, { color: muted, marginBottom: 32 }]}>Пока нет записей</Text>
             ) : history.map((session) => (
-              <View key={session.id} style={[styles.historyCard, { backgroundColor: card }]}>
-                <Text style={[styles.historyDate, { color: foreground }]}>{formatDate(session.performed_on)}</Text>
-                {session.sets.map((s, i) => (
-                  <Text key={i} style={[styles.historySet, { color: muted }]}>
-                    {i + 1}. {s.weight_kg === null ? 'Без веса' : `${s.weight_kg} кг`}{s.reps === null ? '' : ` × ${s.reps}`}
+              <View key={session.id} style={[styles.compactHistory, { backgroundColor: card }]}>
+                <Pressable style={{ flex: 1 }} onPress={() => setExpandedHistoryId(old => old === session.id ? null : session.id)}>
+                  <Text style={[styles.compactLine, { color: foreground }]} numberOfLines={1}>
+                    {formatDate(session.performed_on)} · {session.sets.length} подх. · {formatTonnage(sessionTonnage(session.sets))}
                   </Text>
-                ))}
-                <View style={styles.historyActions}>
-                  <Pressable onPress={() => beginNew(session.sets)} style={styles.actionButton}>
-                    <Ionicons name="repeat-outline" size={17} color={PRIMARY} />
-                    <Text style={styles.actionText}>Повторить</Text>
-                  </Pressable>
-                  <Pressable onPress={() => beginEdit(session)} style={styles.actionButton}>
-                    <Ionicons name="pencil-outline" size={17} color={PRIMARY} />
-                    <Text style={styles.actionText}>Изменить</Text>
-                  </Pressable>
-                  <Pressable onPress={() => confirmDeleteSession(session)} style={styles.actionButton}>
-                    <Ionicons name="trash-outline" size={17} color="#D9534F" />
-                    <Text style={[styles.actionText, { color: '#D9534F' }]}>Удалить</Text>
-                  </Pressable>
-                </View>
+                  <Text style={[styles.compactSets, { color: muted }]} numberOfLines={expandedHistoryId === session.id ? undefined : 1}>
+                    {session.sets.map((s, i) => `${i + 1}. ${s.weight_kg ?? '—'} кг × ${s.reps ?? '—'}`).join(' · ')}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.ellipsisButton} onPress={() => setHistoryMenu(session)} accessibilityLabel="Действия с записью">
+                  <Ionicons name="ellipsis-vertical" size={22} color={muted} />
+                </Pressable>
               </View>
             ))}
           </ScrollView>
         </KeyboardAvoidingView>
       )}
+
+      <Modal visible={historyMenu !== null} transparent animationType="fade" onRequestClose={() => setHistoryMenu(null)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modal, { backgroundColor: card }]}>
+            <Text style={[styles.modalTitle, { color: foreground }]}>Действия с записью</Text>
+            {historyMenu ? (
+              <>
+                <Pressable style={styles.historyMenuAction} onPress={() => {
+                  const item = historyMenu; setHistoryMenu(null); beginNew(item.sets);
+                }}>
+                  <Ionicons name="repeat-outline" color={PRIMARY} size={21} />
+                  <Text style={[styles.historyMenuText, { color: foreground }]}>Повторить</Text>
+                </Pressable>
+                <Pressable style={styles.historyMenuAction} onPress={() => {
+                  const item = historyMenu; setHistoryMenu(null); beginEdit(item);
+                }}>
+                  <Ionicons name="pencil-outline" color={PRIMARY} size={21} />
+                  <Text style={[styles.historyMenuText, { color: foreground }]}>Изменить</Text>
+                </Pressable>
+                <Pressable style={styles.historyMenuAction} onPress={() => {
+                  const item = historyMenu; setHistoryMenu(null); confirmDeleteSession(item);
+                }}>
+                  <Ionicons name="trash-outline" color="#D9534F" size={21} />
+                  <Text style={[styles.historyMenuText, { color: '#D9534F' }]}>Удалить</Text>
+                </Pressable>
+              </>
+            ) : null}
+            <Pressable style={styles.historyMenuAction} onPress={() => setHistoryMenu(null)}>
+              <Text style={[styles.historyMenuText, { color: muted }]}>Отмена</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={editModal} transparent animationType="fade" onRequestClose={() => setEditModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
@@ -493,4 +527,13 @@ const styles = StyleSheet.create({
   modalCancel: { padding: 10 },
   modalSave: { backgroundColor: PRIMARY, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 10 },
   deleteWhole: { alignItems: 'center', marginTop: 23, paddingTop: 18, borderTopColor: '#8892A044', borderTopWidth: StyleSheet.hairlineWidth },
+  tonnageCard: { flexDirection: 'row', gap: 12, borderRadius: 15, padding: 14, alignItems: 'center', marginBottom: 16 },
+  tonnageValue: { fontSize: 23, fontWeight: '900' },
+  tonnageNote: { fontSize: 12, marginTop: 3 },
+  compactHistory: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, marginBottom: 7, paddingHorizontal: 13, paddingVertical: 10 },
+  compactLine: { fontSize: 13, fontWeight: '800' },
+  compactSets: { fontSize: 12, marginTop: 5, lineHeight: 17 },
+  ellipsisButton: { marginLeft: 9, padding: 5 },
+  historyMenuAction: { flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 44 },
+  historyMenuText: { fontSize: 15, fontWeight: '700' },
 });

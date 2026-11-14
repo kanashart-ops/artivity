@@ -8,6 +8,7 @@ export type Workout = {
   category: WorkoutCategory;
   session_count: number;
   last_date: string | null;
+  tonnage_kg: number;
 };
 
 export type WorkoutSet = {
@@ -31,7 +32,11 @@ export async function listWorkouts(db: SQLiteDatabase): Promise<Workout[]> {
   return db.getAllAsync<Workout>(`
     SELECT w.id, w.name, w.category,
            COUNT(e.id) AS session_count,
-           MAX(e.performed_on) AS last_date
+           MAX(e.performed_on) AS last_date,
+           COALESCE((SELECT SUM(s.weight_kg * s.reps)
+                     FROM workout_entries e2
+                     JOIN workout_sets s ON s.entry_id = e2.id
+                     WHERE e2.workout_id = w.id), 0) AS tonnage_kg
     FROM workout_names w
     LEFT JOIN workout_entries e ON e.workout_id = w.id
     GROUP BY w.id
@@ -69,7 +74,11 @@ export async function getWorkout(
   return db.getFirstAsync<Workout>(`
     SELECT w.id, w.name, w.category,
            COUNT(e.id) AS session_count,
-           MAX(e.performed_on) AS last_date
+           MAX(e.performed_on) AS last_date,
+           COALESCE((SELECT SUM(s.weight_kg * s.reps)
+                     FROM workout_entries e2
+                     JOIN workout_sets s ON s.entry_id = e2.id
+                     WHERE e2.workout_id = w.id), 0) AS tonnage_kg
     FROM workout_names w
     LEFT JOIN workout_entries e ON e.workout_id = w.id
     WHERE w.id = ?

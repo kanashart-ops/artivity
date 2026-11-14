@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 7;
 
 export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
@@ -149,6 +149,59 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+      `);
+    }
+
+    if (currentVersion < 6) {
+      // Программы/комплексы объединяют существующие упражнения.
+      // История workout_entries и workout_sets не переносится и не обнуляется.
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS workout_complexes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+          category TEXT NOT NULL DEFAULT 'strength',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS workout_complex_items (
+          complex_id INTEGER NOT NULL,
+          workout_id INTEGER NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (complex_id, workout_id),
+          FOREIGN KEY (complex_id) REFERENCES workout_complexes(id) ON DELETE CASCADE,
+          FOREIGN KEY (workout_id) REFERENCES workout_names(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS workout_complex_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          complex_id INTEGER NOT NULL,
+          performed_on TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (complex_id) REFERENCES workout_complexes(id) ON DELETE CASCADE
+        );
+
+        ALTER TABLE workout_entries ADD COLUMN complex_session_id INTEGER
+          REFERENCES workout_complex_sessions(id) ON DELETE SET NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_complex_session_date
+          ON workout_complex_sessions(complex_id, performed_on);
+        CREATE INDEX IF NOT EXISTS idx_workout_complex_session
+          ON workout_entries(complex_session_id);
+      `);
+    }
+
+    if (currentVersion < 7) {
+      // Бассейн хранится отдельно и не заменяет ежедневную анкету.
+      // Старые таймеры сохраняют свою прежнюю формулу (NULL = стандартное правило).
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS pool_visits (
+          date TEXT PRIMARY KEY NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        ALTER TABLE restricted_items ADD COLUMN activity_impact_days INTEGER;
+        ALTER TABLE consumption_events ADD COLUMN pool_bonus_days INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE consumption_events ADD COLUMN inactivity_extra_days INTEGER NOT NULL DEFAULT 0;
       `);
     }
 

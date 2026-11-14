@@ -9,6 +9,7 @@ export type CalendarDay = {
   manualWorkout: boolean;
   lightDay: boolean;
   alcohol: boolean;
+  pool: boolean;
   workouts: CalendarWorkout[];
   foods: string[];
 };
@@ -44,7 +45,7 @@ export async function loadCalendarMonth(
   const untilYear = month === 11 ? year + 1 : year;
   const next = monthDateKey(untilYear, month === 11 ? 0 : month + 1);
 
-  const [daily, workouts, foods] = await Promise.all([
+  const [daily, workouts, foods, pool] = await Promise.all([
     db.getAllAsync<DailyRow>(
       `SELECT date, checked_in, trained, light_day, alcohol
        FROM daily_entries WHERE date >= ? AND date < ?`,
@@ -66,6 +67,9 @@ export async function loadCalendarMonth(
        ORDER BY ce.consumed_at, ce.id`,
       `${from}T00:00:00`, `${next}T00:00:00`
     ),
+    db.getAllAsync<{ date: string }>(
+      'SELECT date FROM pool_visits WHERE date >= ? AND date < ?', from, next
+    ),
   ]);
 
   const result: Record<string, CalendarDay> = {};
@@ -73,7 +77,7 @@ export async function loadCalendarMonth(
     if (!result[date]) {
       result[date] = {
         date, checkedIn: false, manualWorkout: false,
-        lightDay: false, alcohol: false, workouts: [], foods: [],
+        lightDay: false, alcohol: false, pool: false, workouts: [], foods: [],
       };
     }
     return result[date];
@@ -85,6 +89,9 @@ export async function loadCalendarMonth(
     day.manualWorkout = entry.trained === 1;
     day.lightDay = entry.light_day === 1;
     day.alcohol = entry.alcohol === 1;
+  }
+  for (const visit of pool) {
+    ensure(visit.date).pool = true;
   }
   for (const entry of workouts) {
     ensure(entry.date).workouts.push({

@@ -12,6 +12,7 @@ import WeightSection from '@/components/weight-section';
 import SwipeTabScreen from '@/components/swipe-tab-screen';
 import { loadToday, type TodaySnapshot } from '@/database/daily';
 import { getTrainingConsistency, type TrainingConsistency } from '@/database/intervals';
+import { loadTonnageTotals, formatTonnage, formatKg, type TonnageTotals } from '@/database/tonnage';
 
 type Stats = {
   today: TodaySnapshot;
@@ -21,6 +22,7 @@ type Stats = {
   totalSessions: number;
   foodEvents: number;
   earlyEvents: number;
+  tonnage: TonnageTotals;
 };
 
 function key(date: Date): string {
@@ -44,7 +46,7 @@ export default function ProgressScreen() {
       try {
         const now = new Date();
         const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
-        const [today, training, week, reports, sessions, food] = await Promise.all([
+        const [today, training, week, reports, sessions, food, tonnage] = await Promise.all([
           loadToday(db), getTrainingConsistency(db),
           db.getFirstAsync<{ total: number }>(
             'SELECT COUNT(*) AS total FROM daily_entries WHERE checked_in = 1 AND date BETWEEN ? AND ?',
@@ -58,10 +60,11 @@ export default function ProgressScreen() {
           db.getFirstAsync<{ total: number; early: number }>(
             'SELECT COUNT(*) AS total, COALESCE(SUM(was_early),0) AS early FROM consumption_events'
           ),
+          loadTonnageTotals(db),
         ]);
         if (active) {
           setStats({ today, training, completedWeek: week?.total ?? 0, reports30: reports?.total ?? 0,
-            totalSessions: sessions?.total ?? 0, foodEvents: food?.total ?? 0, earlyEvents: food?.early ?? 0 });
+            totalSessions: sessions?.total ?? 0, foodEvents: food?.total ?? 0, earlyEvents: food?.early ?? 0, tonnage });
           setError('');
         }
       } catch (e) {
@@ -90,6 +93,32 @@ export default function ProgressScreen() {
                 <View style={{ flex: 1, paddingLeft: 10 }}>
                   <Text style={[styles.cardTitle, { color: t.text }]}>Неделя привычек</Text>
                   <Text style={[styles.caption, { color: t.muted, marginTop: 8 }]}>Сколько дней ты отметил на этой неделе</Text>
+                </View>
+              </View>
+              <View style={[styles.section, { backgroundColor: t.card, borderColor: t.border, marginTop: 0, marginBottom: 14 }]}>
+                <View style={styles.sectionRow}>
+                  <Ionicons name="barbell-outline" color="#12C873" size={24} />
+                  <Text style={[styles.cardTitle, { color: t.text }]}>Поднятый тоннаж</Text>
+                </View>
+                <Text style={[styles.caption, { color: t.muted, marginTop: 8, marginBottom: 12 }]}>
+                  Вес × повторения во всех сохранённых подходах. Комплексы учитываются один раз.
+                </Text>
+                <View style={styles.tonnageRow}>
+                  {[
+                    { title: 'Неделя', value: stats.tonnage.weekKg },
+                    { title: 'Месяц', value: stats.tonnage.monthKg },
+                    { title: 'Год', value: stats.tonnage.yearKg },
+                  ].map(item => (
+                    <View key={item.title} style={[styles.tonnageTile, { backgroundColor: t.cardAlt }]}>
+                      <Text style={[styles.tonnageLabel, { color: t.muted }]}>{item.title}</Text>
+                      <Text style={[styles.tonnageValue, { color: t.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatTonnage(item.value)}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={[styles.allTonnage, { borderTopColor: t.border }]}>
+                  <Text style={[styles.caption, { color: t.muted }]}>За всё время</Text>
+                  <Text style={[styles.allValue, { color: t.text }]}>{formatTonnage(stats.tonnage.allKg)}</Text>
+                  <Text style={[styles.caption, { color: t.muted }]}>{formatKg(stats.tonnage.allKg)}</Text>
                 </View>
               </View>
               <WeightSection />
@@ -153,4 +182,10 @@ const styles = StyleSheet.create({
   sectionRow: { flexDirection: 'row', gap: 9, alignItems: 'center' },
   track: { height: 8, borderRadius: 9, marginTop: 14, overflow: 'hidden' },
   fill: { height: 8, backgroundColor: '#12C873', borderRadius: 9 },
+  tonnageRow: { flexDirection: 'row', gap: 8 },
+  tonnageTile: { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 14, borderRadius: 14 },
+  tonnageLabel: { fontSize: 12, fontWeight: '700' },
+  tonnageValue: { fontSize: 18, fontWeight: '900', marginTop: 7 },
+  allTonnage: { borderTopWidth: 1, marginTop: 14, paddingTop: 13, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  allValue: { fontSize: 22, fontWeight: '900' },
 });

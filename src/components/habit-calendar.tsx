@@ -60,6 +60,7 @@ function foodIcon(name: string): string {
 function dayIcons(entry?: CalendarDay): string[] {
   if (!entry) return [];
   const icons = new Set<string>();
+  if (entry.pool) icons.add('🏊');
   for (const workout of entry.workouts) icons.add(kindIcon(workout.category));
   if (entry.manualWorkout && !entry.workouts.length) icons.add('🏋️');
   for (const food of entry.foods) icons.add(foodIcon(food));
@@ -243,6 +244,9 @@ export default function HabitCalendar({ refreshToken }: Props) {
               {activeDay.lightDay ? (
                 <Text style={[styles.detailText, { color: theme.text }]}>🥗 Разгрузочный день</Text>
               ) : null}
+              {activeDay.pool ? (
+                <Text style={[styles.detailText, { color: theme.text }]}>🏊 Посещение бассейна</Text>
+              ) : null}
               {activeDay.alcohol ? (
                 <Text style={[styles.detailText, { color: theme.text }]}>🍷 Отмечен алкоголь</Text>
               ) : null}
@@ -257,7 +261,7 @@ export default function HabitCalendar({ refreshToken }: Props) {
           <View style={styles.legendDot} />
           <Text style={[styles.legendText, { color: theme.muted }]}>день отмечен</Text>
         </View>
-        <Text style={[styles.legendText, { color: theme.muted }]}>🏋️ тренировка · 🍕 еда · 🍷 алкоголь</Text>
+        <Text style={[styles.legendText, { color: theme.muted }]}>🏋️ тренировка · 🏊 бассейн · 🍕 еда</Text>
       </View>
     </View>
   );
